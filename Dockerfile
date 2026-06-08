@@ -29,4 +29,4 @@ COPY --from=builder /app/.next/static ./.next/static
 EXPOSE 3000
 
 # Jalankan server Next.js (Standalone mode)
-CMD ["bun", "server.js"]
+CMD ["bun", "src/index.js"]
