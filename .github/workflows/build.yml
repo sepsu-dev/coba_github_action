@@ -1,25 +1,20 @@
-name: Manual Docker Build & Deploy to VPS
+name: "build"
 
-# Mengubah pemicu menjadi manual (Harus diklik dari browser GitHub)
 on:
-  workflow_dispatch:
+  workflow_dispatch: # Pemicu manual (tombol klik)
 
-# Berikan izin ke GitHub Actions untuk mengunggah paket ke GitHub Container Registry
 permissions:
   contents: read
   packages: write
 
 jobs:
   build-image:
-    name: Build Docker Image
+    name: "Build & Push to GHCR"
     runs-on: ubuntu-latest
-    outputs:
-      image_tag: ${{ steps.meta.outputs.version }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # Log in ke GitHub Container Registry (ghcr.io)
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -27,7 +22,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Mengatur penamaan otomatis untuk tag Docker Image
       - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -37,7 +31,6 @@ jobs:
             type=sha,format=short
             type=raw,value=latest
 
-      # Proses kompilasi dan pembuatan Docker Image di server GitHub (VPS Anda tetap santai)
       - name: Build and Push Docker Image
         uses: docker/build-push-action@v5
         with:
@@ -45,47 +38,3 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-
-  deploy:
-    name: Deploy to VPS Ubuntu 24
-    needs: build-image # Menunggu proses build di atas selesai dan sukses
-    runs-on: ubuntu-latest
-    steps:
-      - name: Executing Remote SSH Commands
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          port: 22
-          script: |
-            # 1. Buat folder aplikasi di VPS jika belum ada
-            mkdir -p /var/www/my-bun-app
-            cd /var/www/my-bun-app
-
-            # 2. Log in ke GitHub Registry dari dalam VPS agar diizinkan pull image
-            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-
-            # 3. Ambil (Pull) image terbaru yang barusan selesai di-build oleh GitHub
-            docker pull ghcr.io/${{ github.repository }}:latest
-
-            # 4. Hentikan dan hapus kontainer lama agar tidak bentrok port 3000
-            docker stop my-bun-container || true
-            docker rm my-bun-container || true
-
-            # 5. Jalankan kontainer baru (otomatis membaca file .env lokal jika ada di folder VPS tersebut)
-            if [ -f ".env" ]; then
-              ENV_FLAG="--env-file .env"
-            else
-              ENV_FLAG=""
-            fi
-
-            docker run -d \
-              --name my-bun-container \
-              --restart always \
-              -p 3000:3000 \
-              $ENV_FLAG \
-              ghcr.io/${{ github.repository }}:latest
-
-            # 6. Bersihkan image usang agar penyimpanan disk VPS tidak penuh
-            docker image prune -f
