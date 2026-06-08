@@ -1,32 +1,18 @@
-# Stage 1: Install dependencies & Build aplikasi
-FROM oven-sh/setup-bun:1.1-alpine AS builder
+# GANTI baris pertama dengan image resmi oven/bun berbasis alpine
+FROM oven/bun:1.1-alpine AS builder
 WORKDIR /app
 
-# Copy package files
-COPY package.json bun.lockb ./
+# Copy file konfigurasi package
+COPY package.json bun.lock ./
+
+# Install semua dependencies
 RUN bun install --frozen-lockfile
 
-# Copy semua source code
+# Copy semua source code (termasuk folder src)
 COPY . .
 
-# Set environment dummy untuk build time jika diperlukan
-ENV NEXT_TELEMETRY_DISABLED=1
-RUN bun run build
-
-# Stage 2: Runner (Image akhir yang ringan)
-FROM oven-sh/setup-bun:1.1-alpine AS runner
-WORKDIR /app
-
-ENV NODE_ENV=production
-ENV PORT=3000
-ENV HOSTNAME="0.0.0.0"
-
-# Copy aset statis dan hasil build dari stage builder
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
-
+# Expose port (sesuaikan dengan port aplikasi Anda, misal 3000)
 EXPOSE 3000
 
-# Jalankan server Next.js (Standalone mode)
-CMD ["bun", "src/index.js"]
+# Jalankan aplikasi TypeScript langsung menggunakan Bun
+CMD ["bun", "run", "src/index.ts"]
