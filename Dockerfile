@@ -1,18 +1,18 @@
-# GANTI baris pertama dengan image resmi oven/bun berbasis alpine
-FROM oven/bun:1.1-alpine AS builder
+# Menggunakan image resmi Bun berbasis Alpine Linux yang sangat ringan
+FROM oven/bun:1.2-alpine AS builder
 WORKDIR /app
 
-# Copy file konfigurasi package
+# Menyalin package.json dan bun.lock (format baru Bun v1.2+)
 COPY package.json bun.lock ./
 
-# Install semua dependencies
-RUN bun install --frozen-lockfile
+# Menginstal dependensi secara aman dan ketat menggunakan format baru
+RUN bun install --frozen
 
-# Copy semua source code (termasuk folder src)
+# Menyalin seluruh source code proyek (termasuk folder src)
 COPY . .
 
-# Expose port (sesuaikan dengan port aplikasi Anda, misal 3000)
+# Membuka port internal container (sesuaikan dengan port di src/index.ts Anda)
 EXPOSE 3000
 
-# Jalankan aplikasi TypeScript langsung menggunakan Bun
+# Menjalankan script TypeScript langsung menggunakan runtime Bun
 CMD ["bun", "run", "src/index.ts"]
