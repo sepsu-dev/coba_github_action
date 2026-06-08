@@ -1,0 +1,85 @@
+name: Docker Build & Deploy to VPS
+
+on:
+  push:
+    branches: [ main, master ]
+
+# Berikan izin ke GitHub Actions untuk mengunggah Packages/Registry
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-image:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.version }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # Log in ke GitHub Container Registry menggunakan token bawaan GitHub
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Mengatur penamaan teks tag untuk Docker Image
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=sha,format=short
+            type=raw,value=latest
+
+      # Proses Build dan Push dilakukan di server GitHub (Bukan di VPS!)
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  deploy:
+    name: Deploy to VPS Ubuntu 24
+    needs: build-image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Executing Remote SSH Commands
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: 22
+          script: |
+            # 1. Buat folder aplikasi di VPS jika belum ada
+            mkdir -p /var/www/zepdash
+            cd /var/www/zepdash
+
+            # 2. Log in ke GitHub Registry dari sisi VPS agar diizinkan pull private image
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            # 3. Ambil/Pull image terbaru yang barusan di-build oleh GitHub
+            docker pull ghcr.io/${{ github.repository }}:latest
+
+            # 4. Hentikan dan hapus container lama jika sedang berjalan
+            docker stop zepdash-app || true
+            docker rm zepdash-app || true
+
+            # 5. Jalankan container baru dengan mengambil file .env lokal yang ada di VPS
+            docker run -d \
+              --name zepdash-app \
+              --restart always \
+              -p 3000:3000 \
+              --env-file .env \
+              ghcr.io/${{ github.repository }}:latest
+
+            # 6. Bersihkan image lama yang sudah tidak terpakai (menghemat ruang disk VPS)
+            docker image prune -f
