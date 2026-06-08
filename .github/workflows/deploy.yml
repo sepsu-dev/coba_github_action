@@ -1,22 +1,18 @@
-name: "deploy"
+name: "Deploy Application"
 
 on:
-  workflow_dispatch: # Tetap bisa diklik manual penuh dari nol
   workflow_run:
-    workflows: ["1 🚀 Pipeline: Build Docker Image"] # Memantau file build
+    workflows: ["Build Docker Image"]
     types:
-      - completed # Terpancing jalan saat file build selesai
+      - completed
+  workflow_dispatch: # Pemicu manual dari tab Actions GitHub
 
 jobs:
   deploy:
-    name: "SSH Deploy to Ubuntu 24"
+    name: "Deploy to VPS via SSH"
+    # Berjalan jika dipicu manual ATAU dari workflow_run yang sukses
     if: ${{ github.event.workflow_run == null || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
-    
-    # TAMBAHKAN DUA BARIS INI UNTUK MENGAKTIFKAN SISTEM APPROVAL
-    environment:
-      name: production
-
     steps:
       - name: Executing Remote SSH Commands
         uses: appleboy/ssh-action@v1.0.3
@@ -26,25 +22,22 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           port: 22
           script: |
-            mkdir -p /var/www/my-bun-app
-            cd /var/www/my-bun-app
-
+            # Mengautentikasi Docker ke GHCR di dalam VPS menggunakan token GitHub runner saat ini
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            # Mengunduh image terbaru yang berhasil di-push
             docker pull ghcr.io/${{ github.repository }}:latest
+
+            # Menghentikan kontainer yang sedang berjalan
             docker stop my-bun-container || true
             docker rm my-bun-container || true
 
-            if [ -f ".env" ]; then
-              ENV_FLAG="--env-file .env"
-            else
-              ENV_FLAG=""
-            fi
-
+            # Menjalankan kontainer baru
             docker run -d \
               --name my-bun-container \
               --restart always \
               -p 3000:3000 \
-              $ENV_FLAG \
               ghcr.io/${{ github.repository }}:latest
 
+            # Membersihkan sisa image yang tidak digunakan untuk membebaskan ruang disk VPS
             docker image prune -f
